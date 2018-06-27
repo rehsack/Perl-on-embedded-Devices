@@ -1,0 +1,284 @@
+\documentclass[ngerman,xcolor={table,dvipsnames},smaller,compress,hyperref={bookmarks,colorlinks},handout]{beamer}%
+
+\usepackage{url}
+\usepackage{listings}
+\usepackage[latin9]{inputenc}
+\usepackage{textcomp}
+%\usepackage{auto-pst-pdf}
+\usepackage{graphicx}
+\usepackage{pstricks}
+\usepackage{pst-node}
+\usepackage{pst-uml}
+\usepackage{pst-tree}
+\usepackage{pst-blur}
+
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage{amsmath}
+\usepackage{pifont}
+
+% for multipage tables (xtab or longtable
+\usepackage{longtable}
+\usepackage{lscape}
+\usepackage{booktabs}
+\usepackage[tableposition=top]{caption}
+
+\title{Perl on embedded Devices}
+\author{Jens Rehsack}
+\institute[Niederrhein.PM]{Niederrhein Perl Mongers}
+\date{German Perl Workshop 2018}
+
+\usetheme[secheader]{Boadilla}
+\setbeamertemplate{navigation symbols}{}
+
+\newcommand{\perlfilename}[1]{{\color{cyan}{\textit{\begingroup \urlstyle{sf}\Url{#1}}}}}
+\newcommand{\xsfilename}[1]{{\color{olive}{\textit{\begingroup \urlstyle{sf}\Url{#1}}}}}
+\newcommand{\hfilename}[1]{{\color{olive}{\textit{\begingroup \urlstyle{sf}\Url{#1}}}}}
+\newcommand{\cfilename}[1]{{\color{magenta}{\textit{\begingroup \urlstyle{sf}\Url{#1}}}}}
+\newcommand{\variable}[1]{{\color{violet}{\textsf{#1}}}}
+\newcommand{\variablew}[1]{{{\textsf{#1}}}}
+\newcommand{\command}[1]{'\texttt{#1}'}
+
+\def\signed #1{{\leavevmode\unskip\nobreak\hfil\penalty50\hskip2em
+   \hbox{}\nobreak\hfil(#1)%
+   \parfillskip=0pt \finalhyphendemerits=0 \endgraf}}
+ 
+\newsavebox\mybox
+\newenvironment{aquote}[1]
+   {\savebox\mybox{#1}\begin{quotation}}
+   {\signed{\usebox\mybox}\end{quotation}}
+
+\makeatletter
+\makeatother
+
+\begin{document}
+
+\psset{angleA=90,angleB=-90}
+\lstset{language=Perl,
+        basicstyle=\ttfamily,
+        keywordstyle=\color{Maroon},
+        commentstyle=\color{Blue}, 
+        stringstyle=\color{Green},
+        showstringspaces=false}
+
+\AtBeginPart{\begin{frame}<beamer> \frametitle{Overview} \partpage \tableofcontents[current] \end{frame}}
+
+\frame{\maketitle}
+
+\part{Setup}
+
+\begin{frame}[fragile]{Login on Build Server}
+\begin{block}<1->{Login on Build Server}
+\begin{lstlisting}[language=sh,inputencoding=latin9,escapeinside={(*@}{@*)}]
+$ ssh -Y gpw_acc_${VLAN_GRP}@10.0.${VLAN_GRP}0.1
+# e.g. ssh -Y gpc_acc_4@10.0.40.1
+\end{lstlisting}
+\end{block}
+
+Your password is identical to your login name.
+
+\begin{block}<2->{Attach your device (to your Laptop)}
+\begin{lstlisting}[language=sh,inputencoding=latin9,escapeinside={(*@}{@*)}]
+$ ls -l /dev | grep -i usb
+$ screen /dev/tty.usbserial 115200
+\end{lstlisting}
+\end{block}
+
+\uncover<2->{On Windows use \texttt{putty}, for example.}
+
+\uncover<3->{Optionally power on your device and watch the boot process}
+
+\end{frame}
+
+\begin{frame}[fragile]{Setup Build-Tree}
+\begin{block}<1->{Prepare Build-Tree (Build Server)}
+\scriptsize
+\begin{lstlisting}[language=sh,inputencoding=latin9,escapeinside={(*@}{@*)}]
+$ mkdir -p ~/gpw-community-bsp/sources
+$ cd ~/gpw-community-bsp/
+$ git clone -b master https://github.com/rehsack/gpw-yocto-platform.git
+$ cd sources
+$ git clone -b master https://github.com/rehsack/poky.git
+$ git clone -b master https://github.com/rehsack/meta-openembedded.git
+$ git clone -b master https://github.com/meta-cpan/meta-cpan.git
+$ git clone -b master https://github.com/rehsack/meta-jens.git
+$ git clone -b master https://github.com/rehsack/meta-gpw.git
+\end{lstlisting}
+\end{block}
+\end{frame}
+
+\begin{frame}[fragile]{Setup Environment}
+\begin{block}<1->{Prepare Environment (Build Server)}
+\scriptsize
+\begin{lstlisting}[language=sh,inputencoding=latin9,escapeinside={(*@}{@*)}]
+# gpw_acc_5 does, gpw_acc_8 uses 8
+$ echo "export VLAN_GRP=5
+export LANG=en_US.UTF-8
+source ~/gpw-community-bsp/sources/poky/scripts/oe-init-bashrc" >> ~/.bashrc
+\end{lstlisting}
+\end{block}
+
+Please use your VLAN group from your name plate on the desk.
+
+\begin{block}<2->{Restart and prepare your shell (Build Server)}
+\begin{lstlisting}[language=sh,inputencoding=latin9,escapeinside={(*@}{@*)}]
+$ exec bash
+$ oe_builddir use ~/gpw-community-bsp/gpw-yocto-platform
+\end{lstlisting}
+\end{block}
+\end{frame}
+
+\begin{frame}[fragile]{Setup Cache}
+\begin{block}<1->{Prepare Cache (Build Server)}
+
+Add the following lines to \$BUILDDIR/conf/local.conf
+
+\begin{lstlisting}[language=sh,inputencoding=latin9,escapeinside={(*@}{@*)}]
+BB_GENERATE_MIRROR_TARBALLS = "1"
+INHERIT += "own-mirrors"
+SOURCE_MIRROR_URL = "file:///home/gpw2018/downloads"
+SSTATE_MIRRORS ?= "\
+  file://.* file:///home/gpw2018/sstate-cache/PATH"
+\end{lstlisting}
+\end{block}
+\end{frame}
+
+\part{First Steps}
+
+\begin{frame}[fragile]{Enter Buildmode (Build Server)}
+\begin{block}<1->{Enter Buildmode}
+\small
+\begin{lstlisting}[language=sh,inputencoding=latin9,escapeinside={(*@}{@*)}]
+# create new screen session named bitbake
+$ screen -S bitbake
+$ oe_builddir use ~/gpw-community-bsp/gpw-yocto-platform
+$ WANTED_ROOT_DEV=emmc mkimgs updatable-app-image
+\end{lstlisting}
+\end{block}
+\end{frame}
+
+\begin{frame}[fragile]{Enter Flash (Build Server)}
+\begin{block}<1->{Enter Flash (Build Server)}
+\begin{lstlisting}[language=sh,inputencoding=latin9,escapeinside={(*@}{@*)}]
+# re-connect to screen session named bitbake
+$ screen -r bitbake
+$ WANTED_ROOT_DEV=emmc gpw_deploy flash
+\end{lstlisting}
+\end{block}
+
+\begin{block}<2->{Reset your device (Your Laptop)}
+Reset your device and stop automatic booting by pressing space on the terminal
+attached to the device serial console.
+\end{block}
+
+\begin{block}<3->{Flash device (Your Laptop, Device Screen)}
+\begin{lstlisting}[language=sh,inputencoding=latin9,escapeinside={(*@}{@*)}]
+run netboot
+\end{lstlisting}
+\end{block}
+\end{frame}
+
+\part{On your own}
+
+\begin{frame}[fragile]{Add packages (Build Server)}
+\begin{block}<1->{Add rakudo*}
+\small
+\begin{lstlisting}[language=sh,inputencoding=latin9,escapeinside={(*@}{@*)}]
+$ cd ${BSPDIR}/sources/meta-gpw
+$ vim recipes-images/images/updatable-app-image.bbappend
+IMAGE_INSTALL_append = "\
+  rakudo-star \
+"
+\end{lstlisting}
+\end{block}
+
+\begin{block}<2->{Add Dancer2 (Build Server)}
+\small
+\begin{lstlisting}[language=sh,inputencoding=latin9,escapeinside={(*@}{@*)}]
+$ cd ${BSPDIR}/sources/meta-gpw
+$ vim recipes-images/images/updatable-app-image.bbappend
+IMAGE_INSTALL_append = "\
+  dancer2-perl \
+"
+\end{lstlisting}
+\end{block}
+\end{frame}
+
+\part{Into the future}
+
+\begin{frame}[fragile]{Update image}
+\begin{block}<1->{Update from Upstream (Build Server)}
+\small
+\begin{lstlisting}[language=sh,inputencoding=latin9,escapeinside={(*@}{@*)}]
+$ cd ${BSPDIR}/sources/poky
+$ git remote add upstream git://git.yoctoproject.org/poky
+$ git fetch upstream
+$ git rebase upstream/master
+\end{lstlisting}
+\end{block}
+
+Repeat this for all cloned repositories \ldots
+\end{frame}
+
+\begin{frame}[fragile]{Own software}
+\begin{block}<1->{Add self written software (Build Server)}
+\scriptsize
+\begin{lstlisting}[language=sh,inputencoding=latin9,escapeinside={(*@}{@*)}]
+$ cd ${BSPDIR}/sources/meta-gpw
+$ mkdir recipes-service/myservice
+$ vim recipes-service/myservice/myservice_git.bb
+DESCRIPTION = "My::Service provides backend for cool stuff"
+LICENSE     = "MIT"
+MAINTAINER  = "my.name@my.company"
+HOMEPAGE    = "https://myservice.my.company/"
+LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=..."
+
+SRC_REV = "abcdef0123456789abcdef0123456789abcdef01"
+SRC_URI = "\
+  git://scm.my.company/path/repo.git;rev=${SRC_REV} \
+  file://run \
+  file://my-service.json \
+  ..."
+
+RDEPENDS_${PN} += "daemontools"
+RDEPENDS_${PN} += "dancer2"
+RDEPENDS_${PN} += "moox-configfromfile-perl"
+
+do_install_appends() {
+    install -d -m ${D}${sysconfdir}
+    install -m 0644 ${WORKDIR}/my-service.json ${D}${sysconfdir}
+    install -m 0755 ${WORKDIR}/run ${D}${sysconfdir}/daemontools/service/run
+}
+\end{lstlisting}
+\end{block}
+\end{frame}
+
+\begin{frame}[fragile]{Prepare Packger::Utils}
+\begin{block}<1->{Prepare Packger::Utils (Build Server)}
+\small
+\begin{lstlisting}[language=sh,inputencoding=latin9,escapeinside={(*@}{@*)}]
+# checkout and prepare Packager::Utils
+$ mkdir ~/Projects
+$ cd ~/Projects
+$ git clone https://github.com/rehsack/Packager-Utils.git
+$ cd Packager-Utils
+$ perl Makefile.PM
+$ cpanm installdeps .
+\end{lstlisting}
+\end{block}
+\end{frame}
+
+\begin{frame}[fragile]{Recipes for CPAN modules}
+\begin{block}<1->{Recipes for CPAN modules (Build Server)}
+\small
+\begin{lstlisting}[language=sh,inputencoding=latin9,escapeinside={(*@}{@*)}]
+# create list of available perl/cpan packages
+$ make && env BBPATH=$BUILDDIR perl -Mblib bin/pkg_util \
+  check up2date --packages_pattern "*-perl_*.bb" --packages_pattern "perl*.bb" -o log
+$ make && env BBPATH=$BUILDDIR perl -Mblib bin/pkg_util \
+  create package --categories www --modules Mojolicious
+\end{lstlisting}
+\end{block}
+\end{frame}
+
+\end{document}
